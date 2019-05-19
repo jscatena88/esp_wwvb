@@ -4,8 +4,6 @@ void ampEncTime(time_amp_enc d_out, time_t time_in) {
     struct tm *time_in_struct;
     time_in_struct = gmtime(&time_in);
 
-    time_t test; 
-
     uint8_t M = 2;
     //By convention 0 = 0, 1 =1, 2 = Marker
     d_out[0] = M;
