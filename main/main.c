@@ -21,6 +21,7 @@ static const char *TAG = "esp_wwvb";
 
 static void obtain_time(void);
 static void initialize_sntp(void);
+void printTime( time_t time);
 
 esp_err_t event_handler(void *ctx, system_event_t *event)
 {
@@ -38,17 +39,10 @@ TaskHandle_t DataGenTaskHandle = NULL;
 QueueHandle_t amp_enc_time_queue;
 
 void modulateTask(void *params) {
+
     TickType_t delay_0 = 200/portTICK_PERIOD_MS;
     TickType_t delay_1 = 500/portTICK_PERIOD_MS;
     TickType_t delay_M = 800/portTICK_PERIOD_MS;
-
-    struct timeval tv_now;
-    gettimeofday(&tv_now, NULL);
-    struct tm *time_in_struct;
-    time_in_struct = gmtime(tv_now.tv_sec);
-    int seconds_delay = 60 - time_in_struct->tm_sec;
-    TickType_t delay = ((1000000 - tv_now.tv_usec)/1000)+1/(portTICK_PERIOD_MS) + seconds_delay*1000/portTICK_PERIOD_MS;
-    vTaskDelay(delay);
 
     while(1) {
         //read 60 uint8_t from queue
@@ -56,12 +50,7 @@ void modulateTask(void *params) {
         ESP_LOGI(TAG, "Immediatly before recieve");
         xQueueReceive(amp_enc_time_queue, &amp_enc_time, portMAX_DELAY);
         ESP_LOGI(TAG, "Immediatly after");
-        //read time
-        //delay until start of minute
-        struct timeval tv_now;
-        gettimeofday(&tv_now, NULL);
-        TickType_t delay = ((1000000 - tv_now.tv_usec)/1000 +1)/(portTICK_PERIOD_MS);
-        vTaskDelay(delay);
+
         for (int i = 0; i < 60; i++) {
             //drop powertime_enc
             dac_scale_set(DAC_CHANNEL_1, 3);
@@ -86,18 +75,8 @@ void modulateTask(void *params) {
 void DataGenTask(void *params) {
     while(1) {
         //sync time
-        //obtain_time();
-        for (int i = 0; i<5000; i++) {
-            //wait for minute tick-over
-            ESP_LOGI(TAG, "start wait for minute kick over");
-            struct timeval tv_now;
-            gettimeofday(&tv_now, NULL);
-            struct tm *time_in_struct;
-            time_in_struct = gmtime(tv_now.tv_sec);
-            int seconds_delay = 60 - time_in_struct->tm_sec;
-            TickType_t delay = ((1000000 - tv_now.tv_usec)/1000)+1/(portTICK_PERIOD_MS) + seconds_delay*1000/portTICK_PERIOD_MS;
-            vTaskDelay(delay);
-            ESP_LOGI(TAG, "minute has kicked over");
+        obtain_time();
+        for (int i = 0; i<60; i++) {
             //get time
             time_t wwvb_time;
             time(&wwvb_time);
@@ -106,6 +85,24 @@ void DataGenTask(void *params) {
             //gen wwvb encoding
             uint8_t *time_enc = malloc(sizeof(uint8_t) * 60);
             ampEncTime(time_enc, wwvb_time);
+            vTaskDelay(500/portTICK_PERIOD_MS);
+
+            //wait for minute tick-over
+            ESP_LOGI(TAG, "start wait for minute kick over");
+            struct timeval tv_now;
+            gettimeofday(&tv_now, NULL);
+            printTime(tv_now.tv_sec);
+            struct tm *time_in_struct;
+            time_in_struct = gmtime(&tv_now.tv_sec);
+            int seconds_delay = 60 - time_in_struct->tm_sec - 1;
+            ESP_LOGI(TAG, "tm_sec = %d, seconds delay = %d", time_in_struct->tm_sec, seconds_delay);
+            ESP_LOGI(TAG, "going to wait %f seconds", (seconds_delay*1.0 + ((1000 - tv_now.tv_usec/1000)+1)/1000.0));
+            TickType_t delay = ((1000 - tv_now.tv_usec/1000)+1 + seconds_delay*1000)/portTICK_PERIOD_MS;
+            vTaskDelay(delay);
+            ESP_LOGI(TAG, "minute has kicked over");
+            gettimeofday(&tv_now, NULL);
+            printTime(tv_now.tv_sec);
+
             //place on queue
             ESP_LOGI(TAG, "pushing encoding onto queue");
             uint8_t *ptr = time_enc;
@@ -117,9 +114,8 @@ void DataGenTask(void *params) {
 void app_main(void)
 {
     amp_enc_time_queue = xQueueCreate(10, sizeof(uint8_t*));
-    obtain_time();
-    int clk_8m_div = 0;      // RTC 8M clock divider (division is by clk_8m_div+1, i.e. 0 means 8MHz frequency)
-    int frequency_step = 8;  // Frequency step for CW generator
+    int clk_8m_div = 1;      // RTC 8M clock divider (division is by clk_8m_div+1, i.e. 0 means 8MHz frequency)
+    int frequency_step = 931;  // Frequency step for CW generator
     int scale = 0;
     int offset = 0;
     int invert = 2;  
@@ -128,6 +124,7 @@ void app_main(void)
     dac_offset_set(DAC_CHANNEL_1, offset);
     dac_invert_set(DAC_CHANNEL_1, invert);
     dac_cosine_enable(DAC_CHANNEL_1);
+    dac_output_enable(DAC_CHANNEL_1);
     xTaskCreate(DataGenTask, "data_gen_task", 10000, NULL, 1, DataGenTaskHandle);
     xTaskCreate(modulateTask, "modulate_task", 10000, NULL, 1, ModulateTaskHandle);
 }
@@ -171,4 +168,10 @@ static void initialize_sntp(void)
     sntp_set_sync_mode(SNTP_SYNC_MODE_SMOOTH);
 #endif
     sntp_init();
+}
+
+void printTime( time_t time) {
+    struct tm *time_in_struct;
+    time_in_struct = gmtime(&time);
+    ESP_LOGI(TAG, "Time is %d:%d.%d", time_in_struct->tm_hour, time_in_struct->tm_min, time_in_struct->tm_sec);
 }
