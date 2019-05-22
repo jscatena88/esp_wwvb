@@ -1,6 +1,27 @@
 #include "wwvb_utils.h"
 
-void ampEncTime(time_amp_enc d_out, time_t time_in) {
+void phaseEncTime(time_enc d_out, time_t time_in) {
+    struct tm *time_in_struct;
+    time_in_struct = gmtime(&time_in);
+}
+
+static inline void phaseSyncWordInsert(time_enc d_out) {
+    d_out[0] = 0;
+    d_out[1] = 0;
+    d_out[2] = 1;
+    d_out[3] = 1;
+    d_out[4] = 1;
+    d_out[5] = 0;
+    d_out[6] = 1;
+    d_out[7] = 1;
+    d_out[8] = 0;
+    d_out[9] = 1;
+    d_out[10] = 0;
+    d_out[11] = 0;
+    d_out[12] = 0;
+}
+
+void ampEncTime(time_enc d_out, time_t time_in) {
     struct tm *time_in_struct;
     time_in_struct = gmtime(&time_in);
 

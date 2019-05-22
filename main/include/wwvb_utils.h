@@ -6,9 +6,13 @@
 #include <time.h>
 
 
-typedef uint8_t time_amp_enc[60];
+typedef uint8_t time_enc[60];
 
-void ampEncTime(time_amp_enc d_out, time_t time_in);
+void phaseEncTime(time_enc d_out, time_t time_in);
+
+static inline void phaseSyncWordInsert(time_enc d_out);
+
+void ampEncTime(time_enc d_out, time_t time_in);
 
 bool isLeapYear( uint16_t year);
 
